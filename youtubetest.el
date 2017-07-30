@@ -33,13 +33,18 @@
                            "&key=" (url-hexify-string youtube-api-key))))
     (url-retrieve (concat youtube-base-url "playlistItems" arg-stuff)
                   (lambda (status)
-                    (goto-char (point-min))
+                    (goto-char
+                     (point-min))
                     (re-search-forward "{")
                     (backward-char)
-                    (delete-region (point) (point-min))
-                    (setq youtube-returned-data (buffer-string))
-                    (setq youtube-pretty-json (let ((json-object-type 'alist))
-                                                (json-read-from-string youtube-returned-data)))))))
+                    (delete-region
+                     (point)
+                     (point-min))
+                    (setq youtube-returned-data
+                          (buffer-string))
+                    (setq youtube-pretty-json
+                          (let ((json-object-type 'alist))
+                            (json-read-from-string youtube-returned-data)))))))
 
 (defun youtube-search-query (part maxResults q)
   (let ((url-request-method "GET")
@@ -50,41 +55,95 @@
                            "&key=" youtube-api-key)))
     (url-retrieve (concat youtube-base-url "search" arg-stuff)
                   (lambda (status)
-                    (goto-char (point-min))
+                    (goto-char
+                     (point-min))
                     (re-search-forward "{")
                     (backward-char)
-                    (delete-region (point) (point-min))
-                    (setq youtube-returned-data (buffer-string))
-                    (setq youtube-pretty-json (let ((json-object-type 'alist))
-                                                (json-read-from-string youtube-returned-data)))))))
+                    (delete-region
+                     (point)
+                     (point-min))
+                    (setq youtube-returned-data
+                          (buffer-string))
+                    (setq youtube-pretty-json
+                          (let ((json-object-type 'alist))
+                            (json-read-from-string youtube-returned-data)))))))
 
 (defun youtube-display-titles ()
-  (let* ((testing (append (cdr (assoc 'items youtube-pretty-json)) nil))
-         (map (make-sparse-keymap)))
-    (dolist (element testing)
-      (define-key map [f5] (lambda () (interactive) (setq video-url (concat "https://www.youtube.com/watch?v=" (cdr (assoc 'videoId (assoc 'resourceId (assoc 'snippet element))))))
-                             (start-process-shell-command "mpv" "mpv" (format "mpv %s" video-url))))
-      (insert (cdr (assoc 'title (assoc 'snippet element))))
-      (add-text-properties (point) (save-excursion (beginning-of-line)
-                                                   (point))
-                           '(mouse-face highlight))
-      (put-text-property (point) (save-excursion (beginning-of-line)
-                                                 (point)) 'keymap map)
+  (let ((testing
+         (append
+          (cdr
+           (assoc 'items youtube-pretty-json))
+          nil))
+        (map (make-sparse-keymap)))
+    (dolist (test testing)
+      (define-key map [f5]
+        `(lambda ()
+          (interactive)
+          (setq video-url
+                (concat "https://www.youtube.com/watch?v="
+                        (cdr
+                         (assoc 'videoId
+                                (assoc 'resourceId
+                                       (assoc 'snippet ',test))))))
+          (start-process-shell-command "mpv" "mpv"
+                                       (format "mpv %s" video-url))))
+      (insert
+       (cdr
+        (assoc 'title
+               (assoc 'snippet test))))
+      (add-text-properties
+       (point)
+       (save-excursion
+         (beginning-of-line)
+         (point))
+       '(mouse-face highlight))
+      (put-text-property
+       (point)
+       (save-excursion
+         (beginning-of-line)
+         (point))
+       'keymap map)
       (insert "\n"))))
 
 (defun youtube-display-playlists (id maxResults part key))
 
 (defun youtube-display-search-results ()
-  (setq testing (append (cdr (assoc 'items youtube-pretty-json)) nil))
-        (let ((map (make-sparse-keymap)))
-    (dolist (element testing)
-      (define-key map [f5] (lambda () (interactive) (setq video-url (concat "https://www.youtube.com/watch?v=" (cdr (assoc 'videoId (assoc 'id element)))))
-                                                                                                                            (message video-url)))
-      (insert (cdr (assoc 'title (assoc 'snippet element))))
-      (add-text-properties (point) (save-excursion (beginning-of-line)
-                                                   (point))
-                           '(mouse-face highlight))
-      (put-text-property (point) (save-excursion (beginning-of-line)
-                                                (point)) 'keymap map)
-                         (insert "\n"))))
-
+  (get-buffer-create "*youtube*")
+  (switch-to-buffer "*youtube*")
+  (erase-buffer)
+  (setq testing
+        (append
+         (cdr
+          (assoc 'items youtube-pretty-json))
+         nil))
+  (let
+      ((map (make-sparse-keymap)))
+    (dolist (test testing)
+      (define-key map [f5]
+        `(lambda ()
+           (interactive)
+           (setq video-url
+                 (concat "https://www.youtube.com/watch?v="
+                         (cdr
+                          (assoc 'videoId
+                                 (assoc 'resourceId
+                                        (assoc 'snippet ',test))))))
+           (start-process-shell-command "mpv" "mpv"
+                                        (format "mpv %s" video-url))))
+      (insert
+       (cdr
+        (assoc 'title
+               (assoc 'snippet test))))
+      (add-text-properties
+       (point)
+       (save-excursion
+         (beginning-of-line)
+         (point))
+       '(mouse-face highlight))
+      (put-text-property
+       (point)
+       (save-excursion
+         (beginning-of-line)
+         (point))
+       'keymap map)
+      (insert "\n"))))
