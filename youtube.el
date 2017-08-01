@@ -1,7 +1,4 @@
-;; (with-current-buffer (url-retrieve-synchronously "https://accounts.google.com/o/oauth2/v2/auth?scope=https%3A%2F%2Fwww.googleapis.com%2Fauth%2Fyoutube&response_type=code&state=security_token%3D138r5719ru3e1%26url%3Dhttps://oauth2.example.com/token&redirect_uri=urn:ietf:wg:oauth:2.0:oob&client_id=457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com"))
-
-;; ~ $ curl --data "code=4/Cf-PX285KJ5aHlmpIQaWbGHPJS6cMO4qWhVpsCAqUoQ&client_id=457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com&client_secret=dgRS0Qm9Z0Mi24QM1bk6rii4&redirect_uri=urn:ietf:wg:oauth:2.0:oob&grant_type=authorization_code" https://www.googleapis.com/oauth2/v4/token
-;; {
+{
 ;; "access_token": "ya29.GluVBHKr9Sycw16XFVrxPfVrte1Jb3p5vXpqRj1flod4bpZC2pqxwWFsJ0B7MOJMuK4r5f5h3a53Oj32FsqNBJ_S8OqX9zldd6VJ1wIBZ4MNETKhI4aKBL9Vp9Cf",
 ;; "token_type": "Bearer",
 ;; "expires_in": 3600,
@@ -42,7 +39,7 @@
     (with-current-buffer response-buffer
       (goto-char (point-min))
       (re-search-forward "{")
-      (delete-region (point-min) (match-beginning 0))
+      (delete-region (point-min) (1- (match-beginning 0)))
       (json-read-from-string (buffer-string)))))
 
 (defun youtube-search-query (part type maxResults q)
@@ -55,10 +52,11 @@
                             "&key=" youtube-api-key))
          (response-buffer
           (url-retrieve-synchronously (concat youtube-base-url "search" arg-stuff) t)))
-    (goto-char (point-min))
-    (re-search-forward "{")
-    (delete-region (point-min) (match-beginning 0))
-    (json-read-from-string (buffer-string))))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "{")
+      (delete-region (point-min) (1- (match-beginning 0)))
+      (json-read-from-string (buffer-string)))))
 
 (defun youtube-search-user-query (search)
   (interactive (list (read-string "User: ")))
