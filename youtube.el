@@ -20,60 +20,50 @@
 
 ;; ~/Repos/kadinparker/elisp $ curl -i -G -d "playlistId=PLaiPn4ewcbkHxqv1ao5R-piPIqRDe3kkI&maxResults=25&part=snippet,contentDetails&key=AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q" https://www.googleapis.com/youtube/v3/playlistItems
 
-(setq playlistId "PLaiPn4ewcbkGyctKCSmPfYxr366z4BkOJ")
-(setq youtube-api-key "AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q")
+(setq youtube-api-key "AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q"
+      youtube-base-url "https://www.googleapis.com/youtube/v3/")
 
-(defvar youtube-base-url "https://www.googleapis.com/youtube/v3/")
+(make-variable-buffer-local
+ (defvar youtube-returned-data nil))
+
+(make-variable-buffer-local
+ (defvar youtube-pretty-json nil))
 
 (defun youtube-playlist-query (id maxResults part key &optional pageToken)
-  (let ((url-request-method "GET")
-        (arg-stuff (concat "?playlistId=" id
-                           "&maxResults=" (url-hexify-string maxResults)
-                           "&part=" (url-hexify-string part)
-                           "&key=" (url-hexify-string youtube-api-key)
-                           "&pageToken=" pageToken)))
-    (message (concat youtube-base-url "playlistItems" arg-stuff))
-    (url-retrieve (concat youtube-base-url "playlistItems" arg-stuff)
-                  (lambda (status)
-                    (goto-char
-                     (point-min))
-                    (re-search-forward "{")
-                    (backward-char)
-                    (delete-region
-                     (point)
-                     (point-min))
-                    (setq youtube-returned-data
-                          (buffer-string))
-                    (setq youtube-pretty-json
-                          (let ((json-object-type 'alist))
-                            (json-read-from-string youtube-returned-data)))))))
+  (let* ((json-object-type 'alist)
+         (url-request-method "GET")
+         (arg-stuff (concat "?playlistId=" id
+                            "&maxResults=" (url-hexify-string maxResults)
+                            "&part=" (url-hexify-string part)
+                            "&key=" (url-hexify-string youtube-api-key)
+                            "&pageToken=" pageToken))
+         (response-buffer
+          (url-retrieve-synchronously (concat youtube-base-url "playlistItems" arg-stuff) t)))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "{")
+      (delete-region (point-min) (match-beginning 0))
+      (json-read-from-string (buffer-string)))))
 
 (defun youtube-search-query (part type maxResults q)
-  (let ((url-request-method "GET")
-        (arg-stuff (concat "?part=" (url-hexify-string part)
-                           "&q=" q
-                           "&type=" type
-                           "&maxResults=" maxResults
-                           "&key=" youtube-api-key)))
-    (url-retrieve (concat youtube-base-url "search" arg-stuff)
-                  (lambda (status)
-                    (goto-char
-                     (point-min))
-                    (re-search-forward "{")
-                    (backward-char)
-                    (delete-region
-                     (point)
-                     (point-min))
-                    (setq youtube-returned-data
-                          (buffer-string))
-                    (setq youtube-pretty-json
-                          (let ((json-object-type 'alist))
-                            (json-read-from-string youtube-returned-data)))))))
+  (let* ((json-object-type 'alist)
+         (url-request-method "GET")
+         (arg-stuff (concat "?part=" (url-hexify-string part)
+                            "&q=" q
+                            "&type=" type
+                            "&maxResults=" maxResults
+                            "&key=" youtube-api-key))
+         (response-buffer
+          (url-retrieve-synchronously (concat youtube-base-url "search" arg-stuff) t)))
+    (goto-char (point-min))
+    (re-search-forward "{")
+    (delete-region (point-min) (match-beginning 0))
+    (json-read-from-string (buffer-string))))
 
-(defun youtube-search-user-query ()
-  (youtube-search-query "snippet" "channel" "50" (read-string "User: "))
-  (sit-for 0.5)
-  (youtube-display-search-results))
+(defun youtube-search-user-query (search)
+  (interactive (list (read-string "User: ")))
+  (youtube-display-search-results
+   (youtube-search-query "snippet" "channel" "50" search)))
 
 (defun youtube-user-playlist-query (part channelId maxResults &optional pageToken)
   (let ((url-request-method "GET")
@@ -140,12 +130,16 @@
   (let ((query (read-string "Search Query: "))
         (maxResults (read-string "Max Results: ")))
     (youtube-search-query "snippet" "video" maxResults query)
-    (sleep-for 1)
+    (sit-for 1)
     (youtube-display-search-results)))
 
-(defun youtube-display-search-results ()
-  (get-buffer-create "*youtube*")
-  (switch-to-buffer "*youtube*")
+
+
+
+
+;; (switch-to-buffer "*youtube*")
+(defun youtube-display-search-results (data)
+  (switch-to-buffer (get-buffer-create "*youtube*"))
   (erase-buffer)
   (setq youtube-next-page-token
         (cdr
