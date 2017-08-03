@@ -1,4 +1,4 @@
-{
+;; {
 ;; "access_token": "ya29.GluVBHKr9Sycw16XFVrxPfVrte1Jb3p5vXpqRj1flod4bpZC2pqxwWFsJ0B7MOJMuK4r5f5h3a53Oj32FsqNBJ_S8OqX9zldd6VJ1wIBZ4MNETKhI4aKBL9Vp9Cf",
 ;; "token_type": "Bearer",
 ;; "expires_in": 3600,
@@ -25,6 +25,15 @@
 
 (make-variable-buffer-local
  (defvar youtube-pretty-json nil))
+
+(defun youtube-get-thumbdata (url)
+  (create-image
+   (let ((response (url-retrieve-synchronously url t)))
+     (with-current-buffer response
+       (goto-char (point-min))
+       (re-search-forward "^$")
+       (string-trim-left (buffer-substring (point) (point-max)))))
+   nil t))
 
 (defun youtube-playlist-query (id maxResults part key &optional pageToken)
   (let* ((json-object-type 'alist)
@@ -63,179 +72,118 @@
   (youtube-display-search-results
    (youtube-search-query "snippet" "channel" "50" search)))
 
-(defun youtube-user-playlist-query (part channelId maxResults &optional pageToken)
-  (let ((url-request-method "GET")
-        (arg-stuff (concat "?part=" (url-hexify-string part)
-                           "&channelId=" (url-hexify-string channelId)
-                           "&maxResults=" (url-hexify-string maxResults)
-                           "&key=" youtube-api-key)))
-    (url-retrieve (concat youtube-base-url "playlists" arg-stuff)
-                  (lambda (status)
-                    (goto-char
-                     (point-min))
-                    (re-search-forward "{")
-                    (backward-char)
-                    (delete-region
-                     (point)
-                     (point-min))
-                    (setq youtube-returned-data
-                          (buffer-string))
-                    (setq youtube-pretty-json
-                          (let ((json-object-type 'alist))
-                            (json-read-from-string youtube-returned-data)))))))
+;; (youtube-search-user-query "direwolf20")
 
-(defun youtube-display-titles ()
-  (let ((testing
-         (append
-          (cdr
-           (assoc 'items youtube-pretty-json))
-          nil))
-        (map (make-sparse-keymap)))
-    (dolist (test testing)
-      (define-key map [?\r]
-        `(lambda ()
-          (interactive)
-          (setq video-url
-                (concat "https://www.youtube.com/watch?v="
-                        (cdr
-                         (assoc 'videoId
-                                (assoc 'resourceId
-                                       (assoc 'snippet ',test))))))
-          (start-process-shell-command "mpv" "mpv"
-                                       (format "mpv %s" video-url))))
-      (insert
-       (cdr
-        (assoc 'title
-               (assoc 'snippet test))))
-      (add-text-properties
-       (point)
-       (save-excursion
-         (beginning-of-line)
-         (point))
-       '(mouse-face highlight))
-      (put-text-property
-       (point)
-       (save-excursion
-         (beginning-of-line)
-         (point))
-       'keymap map)
-      (insert "\n"))))
+
+(defun youtube-user-playlist-query (part channelId maxResults &optional pageToken)
+  (let* ((url-request-method "GET")
+         (arg-stuff (concat "?part=" (url-hexify-string part)
+                            "&channelId=" (url-hexify-string channelId)
+                            "&maxResults=" (url-hexify-string maxResults)
+                            "&key=" youtube-api-key))
+         (response-buffer
+          (url-retrieve-synchronously (concat youtube-base-url "playlists" arg-stuff) )))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "{")
+      (delete-region (point-min) (match-beginning 0))
+      (json-read-from-string (buffer-string)))))
 
 (defun youtube-display-playlists (id maxResults part key))
 
-(defun youtube-video-search ()
-  (interactive)
-  (let ((query (read-string "Search Query: "))
-        (maxResults (read-string "Max Results: ")))
-    (youtube-search-query "snippet" "video" maxResults query)
-    (sit-for 1)
-    (youtube-display-search-results)))
-
-
-
-
+(defun youtube-video-search (query)
+  (interactive (list (read-string "Search Query: ")))
+  (youtube-display-search-results
+   (youtube-search-query "snippet" "video" "50" query)))
 
 ;; (switch-to-buffer "*youtube*")
-(defun youtube-display-search-results (data)
+(defun youtube-display-search-results (json)
   (switch-to-buffer (get-buffer-create "*youtube*"))
   (erase-buffer)
-  (setq youtube-next-page-token
-        (cdr
-         (assoc 'nextPageToken youtube-pretty-json)))
-  (setq testing
-        (append
-         (cdr
-          (assoc 'items youtube-pretty-json))
-         nil))
-  (let
-      ((map (make-sparse-keymap)))
-    (dolist (test testing)
-      (define-key map [f5]
-        (lambda ()
-           (interactive)
-           (youtube-user-playlist-query "snippet" (get-text-property (point) 'channelId) "50")
-           (sit-for 1)
-           (youtube-display-user-playlist-results)))
-      (define-key map [?\r]
-        `(lambda ()
-           (interactive)
-           (setq video-url
-                 (concat "https://www.youtube.com/watch?v="
-                         (get-text-property (point) 'videoId)))
-           (message "Video is loading...")
-           (start-process-shell-command "mpv" "mpv"
-                                        (format "mpv %s" video-url))))
-      (define-key map [f4]
-        `(lambda ()
+  (setq youtube-next-page-token (cdr (assoc 'nextPageToken json)))
+  (let ((map (make-sparse-keymap)))
+    (loop
+     for item across (alist-get 'items json) do
+     (define-key map [f5]
+       (lambda ()
+         (interactive)
+         (youtube-display-user-playlist-results
+          (youtube-user-playlist-query "snippet" (get-text-property (point) 'channelId) "50"))))
+     (define-key map [?\r]
+       `(lambda ()
+          (interactive)
+          (message "Video is loading...")
+          (start-process-shell-command "mpv" "mpv"
+                                       (format "mpv %s"
+                                               (concat "https://www.youtube.com/watch?v="
+                                                       (get-text-property (point) 'videoId))))))
+     (define-key map [f4]
+       `(lambda ()
           (interactive)
           (let ((playlistId (cdr
                              (assoc 'playlistId
-                                    (assoc 'snippet ',test)))))
-            (youtube-playlist-query playlistId "50" "snippet" youtube-api-key youtube-next-page-token)
-            (sit-for 0.5)
-            (youtube-display-search-results)
+                                    (assoc 'snippet ',item)))))
+            (youtube-display-search-results
+             (youtube-playlist-query playlistId "50" "snippet" youtube-api-key youtube-next-page-token))
             (beginning-of-buffer))))
-      (insert
-       (propertize
-        (cdr
-         (assoc 'title
-                (assoc 'snippet test)))
-        'mouse-face 'highlight
-        'keymap map
-        'kind (cdr
-               (assoc 'kind
-                      (assoc 'resourceId test)))
-        'channelId (cdr
-                    (assoc 'channelId
-                           (assoc 'snippet test)))
-        'videoId (cdr
-                  (assoc 'videoId
-                         (assoc 'resourceId
-                                (assoc 'snippet test))))
-        'help-echo (cdr
-                      (assoc 'description
-                             (assoc 'snippet test)))))
-      (insert "\n"))))
+     (insert
+      (propertize
+       (cdr
+        (assoc 'title
+               (assoc 'snippet item)))
+       'mouse-face 'highlight
+       'keymap map
+       'kind (cdr
+              (assoc 'kind
+                     (assoc 'resourceId item)))
+       'channelId (cdr
+                   (assoc 'channelId
+                          (assoc 'snippet item)))
+       'videoId
+       (alist-get 'videoId
+                  (if (string= "youtube#searchResult" (alist-get 'kind item))
+                      (alist-get 'id item)
+                    (alist-get 'resourceId (alist-get 'snippet item))))
 
-(defun youtube-display-user-playlist-results ()
+       'help-echo (cdr
+                   (assoc 'description
+                          (assoc 'snippet item)))))
+     (insert "\n")))
+  (goto-char (point-min)))
+
+(defun youtube-display-user-playlist-results (json)
   (get-buffer-create "*youtube-playlist-results*")
   (switch-to-buffer "*youtube-playlist-results*")
   (erase-buffer)
-  (setq testing
-        (append
-         (cdr
-          (assoc 'items youtube-pretty-json))
-         nil))
-  (let
-      ((map (make-sparse-keymap)))
-    (dolist (test testing)
-      (define-key map [?\r]
-        `(lambda ()
-           (interactive)
-           (let ((title
-                  (format "%s"
-                          (get-text-property
-                           (point)
-                           'title))))
-           (message (get-text-property (point) 'playlistId))
-           (youtube-playlist-query (get-text-property (point) 'playlistId) "50" "snippet" youtube-api-key)
-           (message "Loading")
-           (sit-for 1)
-           (youtube-display-search-results))))
-      (insert
-       (propertize
-        (cdr
-         (assoc 'title
-                (assoc 'snippet test)))
-        'title (cdr
-                (assoc 'title
-                       (assoc 'snippet test)))
-        'mouse-face 'highlight
-        'keymap map
-        'playlistId (cdr
-                     (assoc 'id test))
-        'help-echo (cdr
-                      (assoc 'description
-                             (assoc 'snippet test)))))
-      (insert "\n")))
-  (switch-to-buffer "*youtube-playlist-results*"))
+  (let ((map (make-sparse-keymap)))
+    (loop
+     for item across (alist-get 'items json) do
+     (define-key map [?\r]
+       `(lambda ()
+          (interactive)
+          (let ((title
+                 (format "%s"
+                         (get-text-property
+                          (point)
+                          'title))))
+            (message "Loading")
+            (youtube-display-search-results
+             (youtube-playlist-query (get-text-property (point) 'playlistId) "50" "snippet" youtube-api-key)))))
+     (insert
+      (propertize
+       (cdr
+        (assoc 'title
+               (assoc 'snippet item)))
+       'title (cdr
+               (assoc 'title
+                      (assoc 'snippet item)))
+       'mouse-face 'highlight
+       'keymap map
+       'playlistId (cdr
+                    (assoc 'id item))
+       'help-echo (cdr
+                   (assoc 'description
+                          (assoc 'snippet item)))))
+     (insert "\n")))
+  (switch-to-buffer "*youtube-playlist-results*")
+  (goto-char (point-min)))
