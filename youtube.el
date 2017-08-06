@@ -53,6 +53,24 @@
       (delete-region (point-min) (1- (match-beginning 0)))
       (json-read-from-string (buffer-string)))))
 
+(defun youtube-comments-query (part videoId maxResults &optional pageToken searchTerms)
+  (let* ((json-object-type 'alist)
+         (url-request-method "GET")
+         (arg-stuff (concat "?part=" part
+                            "&videoId=" videoId
+                            "&maxResults=" maxResults
+                            "&key=" youtube-api-key
+                            "&textFormat=" "plainText"
+                            "&pageToken=" pageToken
+                            "&searchTerms=" searchTerms))
+         (response-buffer
+          (url-retrieve-synchronously (concat youtube-base-url "commentThreads" arg-stuff) t)))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "{")
+      (delete-region (point-min) (1- (match-beginning 0)))
+      (json-read-from-string (buffer-string)))))
+
 (defun youtube-search-query (part type maxResults q)
   (let* ((json-object-type 'alist)
          (url-request-method "GET")
@@ -162,6 +180,8 @@
      (insert "\n")))
   (goto-char (+ 1 (point-min)))
   (read-only-mode))
+
+(defun youtube-display-comments (json))
 
 (defun youtube-display-user-playlist-results (json)
   (get-buffer-create "*youtube-playlist-results*")
