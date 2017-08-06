@@ -18,7 +18,9 @@
 ;; ~/Repos/kadinparker/elisp $ curl -i -G -d "playlistId=PLaiPn4ewcbkHxqv1ao5R-piPIqRDe3kkI&maxResults=25&part=snippet,contentDetails&key=AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q" https://www.googleapis.com/youtube/v3/playlistItems
 
 (setq youtube-api-key "AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q"
-      youtube-base-url "https://www.googleapis.com/youtube/v3/")
+      youtube-base-url "https://www.googleapis.com/youtube/v3/"
+      youtube-show-thumbnails nil
+      youtube-thumbnail-size 'medium)
 
 (make-variable-buffer-local
  (defvar youtube-returned-data nil))
@@ -99,6 +101,7 @@
 ;; (switch-to-buffer "*youtube*")
 (defun youtube-display-search-results (json)
   (switch-to-buffer (get-buffer-create "*youtube*"))
+  (read-only-mode -1)
   (erase-buffer)
   (setq youtube-next-page-token (cdr (assoc 'nextPageToken json)))
   (let ((map (make-sparse-keymap)))
@@ -128,11 +131,15 @@
             (beginning-of-buffer))))
      (insert
       (propertize
-       (cdr
+       (concat "  " (cdr
         (assoc 'title
-               (assoc 'snippet item)))
+               (assoc 'snippet item))))
        'mouse-face 'highlight
        'keymap map
+       'thumbnail (cdr (assoc 'url
+                              (assoc youtube-thumbnail-size
+                                     (assoc 'thumbnails
+                                            (assoc 'snippet item)))))
        'kind (cdr
               (assoc 'kind
                      (assoc 'resourceId item)))
@@ -148,8 +155,13 @@
        'help-echo (cdr
                    (assoc 'description
                           (assoc 'snippet item)))))
+     (beginning-of-line)
+     (insert-image (youtube-get-thumbdata
+                    (get-text-property (point) 'thumbnail)))
+     (end-of-line)
      (insert "\n")))
-  (goto-char (point-min)))
+  (goto-char (+ 1 (point-min)))
+  (read-only-mode))
 
 (defun youtube-display-user-playlist-results (json)
   (get-buffer-create "*youtube-playlist-results*")
