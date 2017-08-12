@@ -71,14 +71,16 @@
       (delete-region (point-min) (1- (match-beginning 0)))
       (json-read-from-string (buffer-string)))))
 
-(defun youtube-search-query (part type maxResults q)
+(defun youtube-search-query (part type maxResults q &optional relatedToVideoId)
   (let* ((json-object-type 'alist)
          (url-request-method "GET")
          (arg-stuff (concat "?part=" (url-hexify-string part)
                             "&q=" q
                             "&type=" type
                             "&maxResults=" maxResults
-                            "&key=" youtube-api-key))
+                            "&key=" youtube-api-key
+                            (if relatedToVideoId
+                                (concat "&relatedToVideoId=" relatedToVideoId))))
          (response-buffer
           (url-retrieve-synchronously (concat youtube-base-url "search" arg-stuff) t)))
     (with-current-buffer response-buffer
@@ -117,6 +119,7 @@
    (youtube-search-query "snippet" "video" "50" query)))
 
 ;; (switch-to-buffer "*youtube*")
+
 (defun youtube-display-search-results (json)
   (switch-to-buffer (get-buffer-create "*youtube*"))
   (read-only-mode -1)
@@ -130,6 +133,15 @@
          (interactive)
          (youtube-display-user-playlist-results
           (youtube-user-playlist-query "snippet" (get-text-property (point) 'channelId) "50"))))
+     (define-key map (kbd "C-x y r")
+       `(lambda ()
+          (interactive)
+          (youtube-display-search-results (youtube-search-query "snippet" "video" "50" nil (get-text-property (point) 'videoId)))))
+     (define-key map (kbd "C-x y c")
+       `(lambda ()
+          (interactive)
+          (message "Comments are loading...")
+          (youtube-display-comments (youtube-comments-query "snippet,replies" (get-text-property (point) 'videoId) "100"))))
      (define-key map [?\r]
        `(lambda ()
           (interactive)
@@ -158,9 +170,11 @@
                               (assoc youtube-thumbnail-size
                                      (assoc 'thumbnails
                                             (assoc 'snippet item)))))
-       'kind (cdr
-              (assoc 'kind
-                     (assoc 'resourceId item)))
+       'kind
+       (alist-get 'kind
+                  (if (member 'id item)
+                      (assoc 'id item)
+                    (assoc 'resourceId item)))
        'channelId (cdr
                    (assoc 'channelId
                           (assoc 'snippet item)))
@@ -181,7 +195,24 @@
   (goto-char (+ 1 (point-min)))
   (read-only-mode))
 
-(defun youtube-display-comments (json))
+;; TODO Finish this function
+(defun youtube-display-comments (json)
+  (get-buffer-create "*youtube-comment-results*")
+  (switch-to-buffer "*youtube-comment-results*")
+  (erase-buffer)
+  (let ((map (make-sparse-keymap)))
+    (loop
+     for item across (alist-get 'items json) do
+     (insert
+      (propertize
+       (alist-get 'textDisplay
+                  (assoc 'snippet
+                         (assoc 'topLevelComment
+                                (assoc 'snippet item))))))
+     (insert "\n")
+     (insert "------------------------------------------")
+     (insert "\n")))
+  (beginning-of-buffer))
 
 (defun youtube-display-user-playlist-results (json)
   (get-buffer-create "*youtube-playlist-results*")
