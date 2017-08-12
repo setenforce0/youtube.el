@@ -132,10 +132,11 @@
     (youtube-request (concat youtube-base-url "commentThreads" arg-stuff))))
 
 
-(defun youtube-activities-query (part mine maxResults &optional pageToken accessToken)
+(defun youtube-activities-query (part channelId mine maxResults &optional pageToken accessToken)
   (let* ((url-request-method "GET")
          (arg-stuff (concat "?part=" part
-                            "&mine=" mine
+                            (if mine (concat "&mine=" mine) "")
+                            (if channelId (concat "&channelId=" channelId) "")
                             "&maxResults=" maxResults
                             "&pageToken=" pageToken
                             "&access_token=" accessToken
@@ -161,14 +162,16 @@
                             "&pageToken=" pageToken)))
     (youtube-request (concat youtube-base-url "playlistItems" arg-stuff))))
 
-(defun youtube-search-query (part type maxResults q)
+(defun youtube-search-query (part type maxResults q &optional channelId)
   (let* ((url-request-method "GET")
          (arg-stuff (concat "?part=" (url-hexify-string part)
-                            "&q=" q
+                            (if q (concat "&q=" q) "")
+                            (if channelId (concat "&channelId=" channelId) "")
                             "&type=" type
                             "&maxResults=" maxResults
                             "&key=" youtube-api-key)))
     (youtube-request (concat youtube-base-url "search" arg-stuff))))
+
 
 (defun youtube-search-user-query (search)
   (interactive (list (read-string "User: ")))
@@ -246,6 +249,26 @@
   (youtube-display-search-results
    (youtube-search-query "snippet" "video" "50" query)))
 
+
+;; (defun youtube-display-activities (&optional channelId)
+;;   (let ((query (youtube-activities-query
+;;                 "snippet,contentDetails" channelId
+;;                 "true" "5" nil youtube-oauth-access-code)))
+;;     (loop for item in (alist-get 'items query)
+;;           for details = (alist-get 'contentDetails item)
+;;           for snippet = (alist-get 'snippet item)
+;;           for type = (intern (alist-get 'type snippet)) do
+;;           (case type
+;;             (subscription
+;;              (insert
+;;               (concat "Subscribed to "
+;;                       (propertize (alist-get 'channelTitle snippet)
+;;                                   'face 'font-lock-builtin-face))))
+;;             )
+;;           (insert "\n\n-------------------------------\n\n")
+
+;;       )))
+
 ;; (switch-to-buffer "*youtube*")
 (defun youtube-display-search-results (json)
   (switch-to-buffer (get-buffer-create "*youtube*"))
@@ -268,11 +291,14 @@
      (define-key map [?\r]
        `(lambda ()
           (interactive)
-          (message "Video is loading...")
-          (start-process-shell-command "mpv" "mpv"
-                                       (format "mpv %s"
-                                               (concat "https://www.youtube.com/watch?v="
-                                                       (get-text-property (point) 'videoId))))))
+          (let ((videoId (get-text-property (point) 'videoId)))
+            (if (not videoId)
+                (youtube-display-search-results
+                 (youtube-search-query "snippet" "video" "50" nil
+                                       (get-text-property (point) 'channelId)))
+              (message "Video is loading...")
+              (start-process-shell-command "mpv" "mpv"
+                                           (format "mpv %s" (concat "https://www.youtube.com/watch?v=" videoId)))))))
      (define-key map [f4]
        `(lambda ()
           (interactive)
