@@ -119,6 +119,19 @@
     (youtube-display-search-results
      (youtube-request (concat youtube-base-url "subscriptions" arg-stuff)))))
 
+(defun youtube-comments-query (part videoId maxResults &optional pageToken searchTerms)
+  (let* ((json-object-type 'alist)
+         (url-request-method "GET")
+         (arg-stuff (concat "?part=" part
+                            "&videoId=" videoId
+                            "&maxResults=" maxResults
+                            "&key=" youtube-api-key
+                            "&textFormat=" "plainText"
+                            "&pageToken=" pageToken
+                            "&searchTerms=" searchTerms)))
+    (youtube-request (concat youtube-base-url "commentThreads" arg-stuff))))
+
+
 (defun youtube-activities-query (part mine maxResults &optional pageToken accessToken)
   (let* ((url-request-method "GET")
          (arg-stuff (concat "?part=" part
@@ -173,7 +186,60 @@
                             "&key=" youtube-api-key)))
     (youtube-request (concat youtube-base-url "playlists" arg-stuff))))
 
-(defun youtube-dislay-playlists (id maxResults part key))
+;; (defun youtube-dislay-playlists (id maxResults part key))
+
+
+;; (youtube-display-comments (youtube-comments-query "snippet,replies" videoId "100" nextPageToken))
+
+(defun youtube-cleanse (string)
+  (remove-if-not
+   (lambda (char)
+     (encode-coding-char char buffer-file-coding-system))
+   string))
+
+(defun youtube-display-comments (json)
+  (let ((buffer (get-buffer-create "*youtube-comment-results*"))
+        (nextPageToken (alist-get 'nextPageToken youtube-last-response))
+        (videoId (alist-get 'videoId (alist-get 'snippet (first (alist-get 'items youtube-last-response))))))
+    (switch-to-buffer buffer)
+    (erase-buffer)
+    (local-set-key
+     (kbd "C-x y n")
+     `(lambda ()
+        (interactive)
+        (youtube-display-comments
+         (youtube-comments-query
+          "snippet,replies" ,videoId "100" ,nextPageToken))))
+    (loop for item in (alist-get 'items json)
+          for snippet = (alist-get 'snippet item) do
+          (insert
+           (concat
+            (propertize
+             (youtube-cleanse
+              (alist-get 'authorDisplayName
+                         (alist-get 'snippet
+                                    (alist-get 'topLevelComment snippet))))
+             'face 'font-lock-builtin-face)
+            "\n"
+            (youtube-cleanse
+             (alist-get 'textDisplay
+                        (alist-get 'snippet
+                                   (alist-get 'topLevelComment snippet))))))
+          (when (/= 0 (alist-get 'totalReplyCount snippet))
+            (loop for comment in (alist-get 'comments (alist-get 'replies item))
+                  for snippet = (alist-get 'snippet comment) do
+                  (insert
+                   (concat "\n    ---------------\n    "
+                           (propertize (youtube-cleanse (alist-get 'authorDisplayName snippet))
+                                       'face 'font-lock-builtin-face)
+                           "\n    "
+                           (replace-regexp-in-string
+                            "[\n]" "\n    "
+                            (youtube-cleanse (alist-get 'textDisplay snippet)))))))
+          (insert "\n\n------------------------------------------\n\n"))
+  (beginning-of-buffer)))
+
+;; (youtube-video-search "Lamborghini Sesto Elemento at Imola - Top Gear - Series 20 - BBC")
 
 (defun youtube-video-search (query)
   (interactive (list (read-string "Search Query: ")))
@@ -194,6 +260,11 @@
          (interactive)
          (youtube-display-user-playlist-results
           (youtube-user-playlist-query "snippet" (get-text-property (point) 'channelId) "50"))))
+     (define-key map (kbd "C-x y c")
+       `(lambda ()
+          (interactive)
+          (message "Comments are loading...")
+          (youtube-display-comments (youtube-comments-query "snippet,replies" (get-text-property (point) 'videoId) "100"))))
      (define-key map [?\r]
        `(lambda ()
           (interactive)
