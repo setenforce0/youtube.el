@@ -17,20 +17,45 @@
 
 ;; ~/Repos/kadinparker/elisp $ curl -i -G -d "playlistId=PLaiPn4ewcbkHxqv1ao5R-piPIqRDe3kkI&maxResults=25&part=snippet,contentDetails&key=AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q" https://www.googleapis.com/youtube/v3/playlistItems
 
-
+(defvar youtube-oauth-refresh-token nil)
+(defvar youtube-oauth-access-code nil)
 
 (setq youtube-api-key "AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q"
       youtube-base-url "https://www.googleapis.com/youtube/v3/"
       youtube-show-thumbnails nil
       youtube-thumbnail-size 'medium
-      youtube-oauth-access-code nil
-      youtube-oauth-refresh-token nil)
+      youtube-last-error nil
+      youtube-debug nil
+      youtube-request-type nil
+      youtube-last-response nil)
+
+(defun youtube-sign-out ()
+  (setq
+   youtube-oauth-access-code nil
+   youtube-oauth-refresh-token nil))
 
 (make-variable-buffer-local
  (defvar youtube-returned-data nil))
 
 (make-variable-buffer-local
  (defvar youtube-pretty-json nil))
+
+(defun youtube-request (url)
+  (when youtube-debug
+    (message "%s" url-request-data))
+  (let ((response (url-retrieve-synchronously url t))
+        (json-object-type 'alist)
+        (json-array-type 'list)
+        json json-null json-false)
+    (with-current-buffer response
+      (goto-char (point-min))
+      (re-search-forward "{")
+      (delete-region (point-min) (1- (match-beginning 0)))
+      (setq json (json-read-from-string (buffer-string))))
+    (if (alist-get 'error json)
+        (error (prog1 "API Error" (setq youtube-last-error json)))
+      ;; setq returns whatever you give it
+      (setq youtube-last-response json))))
 
 (defun youtube-oauth-authorize ()
   (let* ((client_id "457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com")
@@ -41,7 +66,7 @@
                             "&response_type=" response_type
                             "&redirect_uri=" redirect_uri
                             "&client_id=" (url-hexify-string client_id))))
-    (browse-url-chromium (concat "https://accounts.google.com/o/oauth2/v2/auth" arg-stuff))))
+    (browse-url (concat "https://accounts.google.com/o/oauth2/v2/auth" arg-stuff))))
 
 (defun youtube-sign-in ()
   (interactive)
@@ -59,21 +84,12 @@
                   "&client_secret=" client_secret
                   "&redirect_uri=" "urn:ietf:wg:oauth:2.0:oob"
                   "&grant_type=" "authorization_code"))
-         (response-buffer
-          (url-retrieve-synchronously "https://www.googleapis.com/oauth2/v4/token")))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "{")
-      (delete-region (point-min) (1- (match-beginning 0)))
-      (setq youtube-oauth-access-code
-            (alist-get 'access_token
-                       (json-read-from-string (buffer-string)))
-            youtube-oauth-refresh-token
-            (alist-get 'refresh_token
-                       (json-read-from-string (buffer-string))))
-      (if (bound-and-true-p youtube-oauth-refresh-token)
-          (message "You have been signed in successfully!")
-        (message "Something went wrong.")))))
+         (response (youtube-request "https://www.googleapis.com/oauth2/v4/token")))
+    (setq youtube-oauth-access-code (alist-get 'access_token response)
+          youtube-oauth-refresh-token (alist-get 'refresh_token response))
+    (if (bound-and-true-p youtube-oauth-refresh-token)
+        (message "You have been signed in successfully!")
+      (message "Something went wrong :("))))
 
 (defun youtube-oauth-access-code-refresh ()
   (if (bound-and-true-p youtube-oauth-refresh-token)
@@ -86,33 +102,32 @@
                       "&client_id=" "457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com"
                       "&client_secret=" "dgRS0Qm9Z0Mi24QM1bk6rii4"
                       "&grant_type=" "refresh_token"))
-             (response-buffer
-              (url-retrieve-synchronously "https://www.googleapis.com/oauth2/v4/token")))
-        (with-current-buffer response-buffer
-          (switch-to-buffer response-buffer)
-          (goto-char (point-min)
-          (re-search-forward "{")
-          (delete-region (point-min) (1- (match-beginning 0)))
-          (setq youtube-oauth-access-code
-                (alist-get 'access_token (json-read-from-string (buffer-string))))))
+             (response (youtube-request "https://www.googleapis.com/oauth2/v4/token")))
+        (setq youtube-oauth-access-code (alist-get 'access_token response))
     (message "You are not authorized yet! Please run youtube-sign-in"))))
 
+(defun youtube-list-subscriptions (part channelId maxResults &optional mine pageToken)
+  (interactive (list "snippet" nil "50" "true" nil))
+  (let* ((url-request-method "GET")
+         (arg-stuff (concat "?part=" part
+                            (if mine "" (concat "&channelId=" channelId))
+                            (if mine (concat "&mine=" mine) "")
+                            "&maxResults=" maxResults
+                            "&pageToken=" pageToken
+                            "&access_token=" youtube-oauth-access-code
+                            "&key=" youtube-api-key)))
+    (youtube-display-search-results
+     (youtube-request (concat youtube-base-url "subscriptions" arg-stuff)))))
+
 (defun youtube-activities-query (part mine maxResults &optional pageToken accessToken)
-  (let* ((json-object-type 'alist)
-         (url-request-method "GET")
+  (let* ((url-request-method "GET")
          (arg-stuff (concat "?part=" part
                             "&mine=" mine
                             "&maxResults=" maxResults
                             "&pageToken=" pageToken
                             "&access_token=" accessToken
-                            "&key=" youtube-api-key))
-         (response-buffer
-          (url-retrieve-synchronously (concat youtube-base-url "activities" arg-stuff) t)))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "{")
-      (delete-region (point-min) (1- (match-beginning 0)))
-      (json-read-from-string (buffer-string)))))
+                            "&key=" youtube-api-key)))
+    (youtube-request (concat youtube-base-url "activities" arg-stuff))))
 
 (defun youtube-get-thumbdata (url)
   (create-image
@@ -130,30 +145,17 @@
                             "&maxResults=" (url-hexify-string maxResults)
                             "&part=" (url-hexify-string part)
                             "&key=" (url-hexify-string youtube-api-key)
-                            "&pageToken=" pageToken))
-         (response-buffer
-          (url-retrieve-synchronously (concat youtube-base-url "playlistItems" arg-stuff) t)))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "{")
-      (delete-region (point-min) (1- (match-beginning 0)))
-      (json-read-from-string (buffer-string)))))
+                            "&pageToken=" pageToken)))
+    (youtube-request (concat youtube-base-url "playlistItems" arg-stuff))))
 
 (defun youtube-search-query (part type maxResults q)
-  (let* ((json-object-type 'alist)
-         (url-request-method "GET")
+  (let* ((url-request-method "GET")
          (arg-stuff (concat "?part=" (url-hexify-string part)
                             "&q=" q
                             "&type=" type
                             "&maxResults=" maxResults
-                            "&key=" youtube-api-key))
-         (response-buffer
-          (url-retrieve-synchronously (concat youtube-base-url "search" arg-stuff) t)))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "{")
-      (delete-region (point-min) (1- (match-beginning 0)))
-      (json-read-from-string (buffer-string)))))
+                            "&key=" youtube-api-key)))
+    (youtube-request (concat youtube-base-url "search" arg-stuff))))
 
 (defun youtube-search-user-query (search)
   (interactive (list (read-string "User: ")))
@@ -168,16 +170,10 @@
          (arg-stuff (concat "?part=" (url-hexify-string part)
                             "&channelId=" (url-hexify-string channelId)
                             "&maxResults=" (url-hexify-string maxResults)
-                            "&key=" youtube-api-key))
-         (response-buffer
-          (url-retrieve-synchronously (concat youtube-base-url "playlists" arg-stuff) )))
-    (with-current-buffer response-buffer
-      (goto-char (point-min))
-      (re-search-forward "{")
-      (delete-region (point-min) (match-beginning 0))
-      (json-read-from-string (buffer-string)))))
+                            "&key=" youtube-api-key)))
+    (youtube-request (concat youtube-base-url "playlists" arg-stuff))))
 
-(defun youtube-display-playlists (id maxResults part key))
+(defun youtube-dislay-playlists (id maxResults part key))
 
 (defun youtube-video-search (query)
   (interactive (list (read-string "Search Query: ")))
@@ -192,7 +188,7 @@
   (setq youtube-next-page-token (cdr (assoc 'nextPageToken json)))
   (let ((map (make-sparse-keymap)))
     (loop
-     for item across (alist-get 'items json) do
+     for item in (alist-get 'items json) do
      (define-key map [f5]
        (lambda ()
          (interactive)
@@ -229,9 +225,13 @@
        'kind (cdr
               (assoc 'kind
                      (assoc 'resourceId item)))
-       'channelId (cdr
-                   (assoc 'channelId
-                          (assoc 'snippet item)))
+
+       'channelId
+       (if (equal (alist-get 'kind youtube-last-response)
+                  "youtube#subscriptionListResponse")
+           (alist-get 'channelId (assoc 'resourceId (assoc 'snippet item)))
+         (alist-get 'channelId (assoc 'snippet item)))
+
        'videoId
        (alist-get 'videoId
                   (if (string= "youtube#searchResult" (alist-get 'kind item))
@@ -255,7 +255,7 @@
   (erase-buffer)
   (let ((map (make-sparse-keymap)))
     (loop
-     for item across (alist-get 'items json) do
+     for item in (alist-get 'items json) do
      (define-key map [?\r]
        `(lambda ()
           (interactive)
