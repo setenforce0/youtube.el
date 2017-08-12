@@ -70,7 +70,49 @@
                        (json-read-from-string (buffer-string)))
             youtube-oauth-refresh-token
             (alist-get 'refresh_token
-                       (json-read-from-string (buffer-string)))))))
+                       (json-read-from-string (buffer-string))))
+      (if (bound-and-true-p youtube-oauth-refresh-token)
+          (message "You have been signed in successfully!")
+        (message "Something went wrong.")))))
+
+(defun youtube-oauth-access-code-refresh ()
+  (if (bound-and-true-p youtube-oauth-refresh-token)
+      (let* ((json-object-type 'alist)
+             (url-request-method "POST")
+             (url-request-extra-headers
+              '(("Content-Type" . "application/x-www-form-urlencoded")))
+             (url-request-data
+              (concat "refresh_token=" youtube-oauth-refresh-token
+                      "&client_id=" "457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com"
+                      "&client_secret=" "dgRS0Qm9Z0Mi24QM1bk6rii4"
+                      "&grant_type=" "refresh_token"))
+             (response-buffer
+              (url-retrieve-synchronously "https://www.googleapis.com/oauth2/v4/token")))
+        (with-current-buffer response-buffer
+          (switch-to-buffer response-buffer)
+          (goto-char (point-min)
+          (re-search-forward "{")
+          (delete-region (point-min) (1- (match-beginning 0)))
+          (setq youtube-oauth-access-code
+                (alist-get 'access_token (json-read-from-string (buffer-string))))))
+    (message "You are not authorized yet! Please run youtube-sign-in"))))
+
+(defun youtube-activities-query (part mine maxResults &optional pageToken accessToken)
+  (let* ((json-object-type 'alist)
+         (url-request-method "GET")
+         (arg-stuff (concat "?part=" part
+                            "&mine=" mine
+                            "&maxResults=" maxResults
+                            "&pageToken=" pageToken
+                            "&access_token=" accessToken
+                            "&key=" youtube-api-key))
+         (response-buffer
+          (url-retrieve-synchronously (concat youtube-base-url "activities" arg-stuff) t)))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "{")
+      (delete-region (point-min) (1- (match-beginning 0)))
+      (json-read-from-string (buffer-string)))))
 
 (defun youtube-get-thumbdata (url)
   (create-image
