@@ -17,16 +17,60 @@
 
 ;; ~/Repos/kadinparker/elisp $ curl -i -G -d "playlistId=PLaiPn4ewcbkHxqv1ao5R-piPIqRDe3kkI&maxResults=25&part=snippet,contentDetails&key=AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q" https://www.googleapis.com/youtube/v3/playlistItems
 
+
+
 (setq youtube-api-key "AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q"
       youtube-base-url "https://www.googleapis.com/youtube/v3/"
       youtube-show-thumbnails nil
-      youtube-thumbnail-size 'medium)
+      youtube-thumbnail-size 'medium
+      youtube-oauth-access-code nil
+      youtube-oauth-refresh-token nil)
 
 (make-variable-buffer-local
  (defvar youtube-returned-data nil))
 
 (make-variable-buffer-local
  (defvar youtube-pretty-json nil))
+
+(defun youtube-oauth-authorize ()
+  (let* ((client_id "457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com")
+         (redirect_uri "urn:ietf:wg:oauth:2.0:oob")
+         (response_type "code")
+         (scope "https://www.googleapis.com/auth/youtube")
+         (arg-stuff (concat "?scope=" scope
+                            "&response_type=" response_type
+                            "&redirect_uri=" redirect_uri
+                            "&client_id=" (url-hexify-string client_id))))
+    (browse-url-chromium (concat "https://accounts.google.com/o/oauth2/v2/auth" arg-stuff))))
+
+(defun youtube-sign-in ()
+  (interactive)
+  (youtube-oauth-authorize)
+  (let* ((authorization_code (read-string "Authorization Code: "))
+         (client_id "457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com")
+         (client_secret "dgRS0Qm9Z0Mi24QM1bk6rii4")
+         (json-object-type 'alist)
+         (url-request-method "POST")
+         (url-request-extra-headers
+          '(("Content-Type" . "application/x-www-form-urlencoded")))
+         (url-request-data
+          (concat "code=" (url-hexify-string authorization_code)
+                  "&client_id=" client_id
+                  "&client_secret=" client_secret
+                  "&redirect_uri=" "urn:ietf:wg:oauth:2.0:oob"
+                  "&grant_type=" "authorization_code"))
+         (response-buffer
+          (url-retrieve-synchronously "https://www.googleapis.com/oauth2/v4/token")))
+    (with-current-buffer response-buffer
+      (goto-char (point-min))
+      (re-search-forward "{")
+      (delete-region (point-min) (1- (match-beginning 0)))
+      (setq youtube-oauth-access-code
+            (alist-get 'access_token
+                       (json-read-from-string (buffer-string)))
+            youtube-oauth-refresh-token
+            (alist-get 'refresh_token
+                       (json-read-from-string (buffer-string)))))))
 
 (defun youtube-get-thumbdata (url)
   (create-image
