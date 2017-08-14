@@ -108,16 +108,20 @@
 
 (defun youtube-list-subscriptions (part channelId maxResults &optional mine pageToken)
   (interactive (list "snippet" nil "50" "true" nil))
-  (let* ((url-request-method "GET")
-         (arg-stuff (concat "?part=" part
-                            (if mine "" (concat "&channelId=" channelId))
-                            (if mine (concat "&mine=" mine) "")
-                            "&maxResults=" maxResults
-                            "&pageToken=" pageToken
-                            "&access_token=" youtube-oauth-access-code
-                            "&key=" youtube-api-key)))
-    (youtube-display-search-results
-     (youtube-request (concat youtube-base-url "subscriptions" arg-stuff)))))
+  (if mine
+      (if (bound-and-true-p youtube-oauth-refresh-token)
+          (let* ((url-request-method "GET")
+                 (arg-stuff (concat "?part=" part
+                                    (if mine "" (concat "&channelId=" channelId))
+                                    (if mine (concat "&mine=" mine) "")
+                                    "&maxResults=" maxResults
+                                    "&pageToken=" pageToken
+                                    "&access_token=" youtube-oauth-access-code
+                                    "&key=" youtube-api-key)))
+            (youtube-display-search-results
+             (youtube-request (concat youtube-base-url "subscriptions" arg-stuff))))
+        (message "Sorry, you're not signed in yet!"))))
+
 
 (defun youtube-comments-query (part videoId maxResults &optional pageToken searchTerms)
   (let* ((json-object-type 'alist)
@@ -162,21 +166,22 @@
                             "&pageToken=" pageToken)))
     (youtube-request (concat youtube-base-url "playlistItems" arg-stuff))))
 
-(defun youtube-search-query (part type maxResults q &optional channelId)
+(defun youtube-search-query (part type maxResults q &optional channelId order)
   (let* ((url-request-method "GET")
          (arg-stuff (concat "?part=" (url-hexify-string part)
                             (if q (concat "&q=" q) "")
                             (if channelId (concat "&channelId=" channelId) "")
                             "&type=" type
                             "&maxResults=" maxResults
-                            "&key=" youtube-api-key)))
+                            "&key=" youtube-api-key
+                            "&order=" order)))
     (youtube-request (concat youtube-base-url "search" arg-stuff))))
 
 
 (defun youtube-search-user-query (search)
   (interactive (list (read-string "User: ")))
   (youtube-display-search-results
-   (youtube-search-query "snippet" "channel" "50" search)))
+   (youtube-search-query "snippet" "channel" "50" search nil "relevance")))
 
 ;; (youtube-search-user-query "direwolf20")
 
@@ -247,7 +252,7 @@
 (defun youtube-video-search (query)
   (interactive (list (read-string "Search Query: ")))
   (youtube-display-search-results
-   (youtube-search-query "snippet" "video" "50" query)))
+   (youtube-search-query "snippet" "video" "50" query nil "relevance")))
 
 
 ;; (defun youtube-display-activities (&optional channelId)
@@ -270,8 +275,11 @@
 ;;       )))
 
 ;; (switch-to-buffer "*youtube*")
-(defun youtube-display-search-results (json)
-  (switch-to-buffer (get-buffer-create "*youtube*"))
+(defun youtube-display-search-results (json &optional buffer)
+  (switch-to-buffer
+   (if buffer
+       (get-buffer-create buffer)
+     (get-buffer-create "*youtube*")))
   (read-only-mode -1)
   (erase-buffer)
   (setq youtube-next-page-token (cdr (assoc 'nextPageToken json)))
@@ -295,7 +303,7 @@
             (if (not videoId)
                 (youtube-display-search-results
                  (youtube-search-query "snippet" "video" "50" nil
-                                       (get-text-property (point) 'channelId)))
+                                       (get-text-property (point) 'channelId) "date") (format "*youtube-channel-%s" (get-text-property (point) 'channelId)))
               (message "Video is loading...")
               (start-process-shell-command "mpv" "mpv"
                                            (format "mpv %s" (concat "https://www.youtube.com/watch?v=" videoId)))))))
