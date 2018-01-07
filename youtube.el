@@ -22,8 +22,8 @@
 
 (setq youtube-api-key "AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q"
       youtube-base-url "https://www.googleapis.com/youtube/v3/"
-      youtube-show-thumbnails nil
-      youtube-thumbnail-size 'medium
+      youtube-show-thumbnails t
+      youtube-thumbnail-size 'default
       youtube-last-error nil
       youtube-debug nil
       youtube-request-type nil
@@ -103,8 +103,8 @@
                       "&client_secret=" "dgRS0Qm9Z0Mi24QM1bk6rii4"
                       "&grant_type=" "refresh_token"))
              (response (youtube-request "https://www.googleapis.com/oauth2/v4/token")))
-        (setq youtube-oauth-access-code (alist-get 'access_token response))
-    (message "You are not authorized yet! Please run youtube-sign-in"))))
+        (setq youtube-oauth-access-code (alist-get 'access_token response)))
+    (message "You are not authorized yet! Please run youtube-sign-in")))
 
 (defun youtube-list-subscriptions (part channelId maxResults &optional mine pageToken)
   (interactive (list "snippet" nil "50" "true" nil))
@@ -245,7 +245,7 @@
                             "[\n]" "\n    "
                             (youtube-cleanse (alist-get 'textDisplay snippet)))))))
           (insert "\n\n------------------------------------------\n\n"))
-  (beginning-of-buffer)))
+    (beginning-of-buffer)))
 
 ;; (youtube-video-search "Lamborghini Sesto Elemento at Imola - Top Gear - Series 20 - BBC")
 
@@ -254,11 +254,10 @@
   (youtube-display-search-results
    (youtube-search-query "snippet" "video" "50" query nil "relevance")))
 
-
 ;; (defun youtube-display-activities (&optional channelId)
 ;;   (let ((query (youtube-activities-query
 ;;                 "snippet,contentDetails" channelId
-;;                 "true" "5" nil youtube-oauth-access-code)))
+;;                 "true" "5" nil youtube-oauth-access-code))
 ;;     (loop for item in (alist-get 'items query)
 ;;           for details = (alist-get 'contentDetails item)
 ;;           for snippet = (alist-get 'snippet item)
@@ -306,7 +305,7 @@
                                        (get-text-property (point) 'channelId) "date") (format "*youtube-channel-%s" (get-text-property (point) 'channelId)))
               (message "Video is loading...")
               (start-process-shell-command "mpv" "mpv"
-                                           (format "mpv %s" (concat "https://www.youtube.com/watch?v=" videoId)))))))
+                                           (format "mpv %s" (concat "'https://www.youtube.com/watch?v=" videoId "'")))))))
      (define-key map [f4]
        `(lambda ()
           (interactive)
@@ -319,8 +318,8 @@
      (insert
       (propertize
        (concat "  " (cdr
-        (assoc 'title
-               (assoc 'snippet item))))
+                     (assoc 'title
+                            (assoc 'snippet item))))
        'mouse-face 'highlight
        'keymap map
        'thumbnail (cdr (assoc 'url
@@ -347,8 +346,9 @@
                    (assoc 'description
                           (assoc 'snippet item)))))
      (beginning-of-line)
-     (insert-image (youtube-get-thumbdata
-                    (get-text-property (point) 'thumbnail)))
+     (if (string= youtube-show-thumbnails "t")
+         (insert-image (youtube-get-thumbdata
+                        (get-text-property (point) 'thumbnail))))
      (end-of-line)
      (insert "\n")))
   (goto-char (+ 1 (point-min)))
@@ -390,3 +390,181 @@
      (insert "\n")))
   (switch-to-buffer "*youtube-playlist-results*")
   (goto-char (point-min)))
+
+                                        ;-----------------------------------------------------------------------------------------------;
+                                        ;TODO: Make a dashboard
+
+(defun youtube-dashboard (part channelId maxResults &optional mine pageToken)
+  (interactive (list "snippet" nil "50" "true" ""))
+  (youtube-oauth-access-code-refresh)
+  (youtube-display-user-results (youtube-query-subscriptions "snippet" nil "50" "true" "") nil "true")
+  )
+
+(defun youtube-query-subscriptions (part channelId maxResults &optional mine pageToken)
+  (if (bound-and-true-p youtube-oauth-refresh-token)
+      (let* ((url-request-method "GET")
+             (arg-stuff (concat "?part=" part
+                                (if mine "" (concat "&channelId=" channelId))
+                                (if mine (concat "&mine=" mine) "")
+                                "&maxResults=" maxResults
+                                "&pageToken=" pageToken
+                                "&access_token=" youtube-oauth-access-code
+                                "&key=" youtube-api-key)))
+        (youtube-request (concat youtube-base-url "subscriptions" arg-stuff)))
+    (message "Sorry, you're not signed in yet!")))
+
+(defun youtube-display-user-results (json &optional buffer show-videos number-of-videos)
+  (switch-to-buffer
+   (if buffer
+       (get-buffer-create buffer)
+     (get-buffer-create "*youtube*")))
+  (read-only-mode -1)
+  (erase-buffer)
+  (font-lock-mode)
+  (toggle-truncate-lines)
+  (message "Loading...")
+  (setq youtube-next-page-token (cdr (assoc 'nextPageToken json)))
+  (let ((map (make-sparse-keymap)))
+    (loop
+     for item in (alist-get 'items json) do
+     (define-key map (kbd "C-x y p")
+       (lambda ()
+         (interactive)
+         (youtube-display-user-playlist-results
+          (youtube-user-playlist-query "snippet" (get-text-property (point) 'channelId) "50"))))
+     (define-key map (kbd "C-x y c")
+       `(lambda ()
+          (interactive)
+          (message "Comments are loading...")
+          (youtube-display-comments (youtube-comments-query "snippet,replies" (get-text-property (point) 'videoId) "100"))))
+     (define-key map [?\r]
+       `(lambda ()
+          (interactive)
+          (let ((videoId (get-text-property (point) 'videoId)))
+            (if (not videoId)
+                (youtube-display-search-results
+                 (youtube-search-query "snippet" "video" "50" nil
+                                       (get-text-property (point) 'channelId) "date") (format "*youtube-channel-%s" (get-text-property (point) 'channelId)))
+              (message "Video is loading...")
+              (start-process-shell-command "mpv" "mpv"
+                                           (format "mpv %s" (concat "'https://www.youtube.com/watch?v=" videoId "'")))))))
+     (define-key map (kbd "C-x y n")
+       `(lambda ()
+          (interactive)
+          (let ((playlistId (cdr
+                             (assoc 'playlistId
+                                    (assoc 'snippet ',item)))))
+            (youtube-display-search-results
+             (youtube-playlist-query playlistId "50" "snippet" youtube-api-key youtube-next-page-token))
+            (beginning-of-buffer))))
+     (insert
+      (propertize
+       (concat "  " (cdr
+                     (assoc 'title
+                            (assoc 'snippet item))))
+       'font-lock-face '(:foreground "orange")
+       'mouse-face 'highlight
+       'keymap map
+       'thumbnail (cdr (assoc 'url
+                              (assoc youtube-thumbnail-size
+                                     (assoc 'thumbnails
+                                            (assoc 'snippet item)))))
+       'kind (cdr
+              (assoc 'kind
+                     (assoc 'resourceId item)))
+
+       'channelId
+       (alist-get 'channelId (assoc 'resourceId (assoc 'snippet item)))
+
+       'videoId
+       (alist-get 'videoId
+                  (if (string= "youtube#searchResult" (alist-get 'kind item))
+                      (alist-get 'id item)
+                    (alist-get 'resourceId (alist-get 'snippet item))))
+
+       'help-echo (cdr
+                   (assoc 'description
+                          (assoc 'snippet item)))))
+     (beginning-of-line)
+     (if (string= youtube-show-thumbnails "t")
+         (insert-image (youtube-get-thumbdata
+                        (get-text-property (point) 'thumbnail))))
+     (end-of-line)
+     (insert "\n")
+     (cond ((string= show-videos "true")
+            (backward-char 2)
+            (let ((json (youtube-search-query "snippet" "video" "5" nil (get-text-property (point) 'channelId) "date")))
+              (forward-line)
+              (insert "\n")
+              (let ((map (make-sparse-keymap)))
+                (loop
+                 for item in (alist-get 'items json) do
+                 (define-key map (kbd "C-x y p")
+                   (lambda ()
+                     (interactive)
+                     (youtube-display-user-playlist-results
+                      (youtube-user-playlist-query "snippet" (get-text-property (point) 'channelId) "50"))))
+                 (define-key map (kbd "C-x y c")
+                   `(lambda ()
+                      (interactive)
+                      (message "Comments are loading...")
+                      (youtube-display-comments (youtube-comments-query "snippet,replies" (get-text-property (point) 'videoId) "100"))))
+                 (define-key map [?\r]
+                   `(lambda ()
+                      (interactive)
+                      (let ((videoId (get-text-property (point) 'videoId)))
+                        (if (not videoId)
+                            (youtube-display-search-results
+                             (youtube-search-query "snippet" "video" "50" nil
+                                                   (get-text-property (point) 'channelId) "date") (format "*youtube-channel-%s" (get-text-property (point) 'channelId)))
+                          (message "Video is loading...")
+                          (start-process-shell-command "mpv" "mpv"
+                                                       (format "mpv %s" (concat "'https://www.youtube.com/watch?v=" videoId "'")))))))
+                 (define-key map (kbd "C-x y n")
+                   `(lambda ()
+                      (interactive)
+                      (let ((playlistId (cdr
+                                         (assoc 'playlistId
+                                                (assoc 'snippet ',item)))))
+                        (youtube-display-search-results
+                         (youtube-playlist-query playlistId "50" "snippet" youtube-api-key youtube-next-page-token))
+                        (beginning-of-buffer))))
+                 (insert
+                  (propertize
+                   (concat "  " (cdr
+                                 (assoc 'title
+                                        (assoc 'snippet item))))
+                   'mouse-face 'highlight
+                   'keymap map
+                   'thumbnail (cdr (assoc 'url
+                                          (assoc youtube-thumbnail-size
+                                                 (assoc 'thumbnails
+                                                        (assoc 'snippet item)))))
+                   'kind (cdr
+                          (assoc 'kind
+                                 (assoc 'resourceId item)))
+
+                   'channelId
+                   (if (equal (alist-get 'kind youtube-last-response)
+                              "youtube#subscriptionListResponse")
+                       (alist-get 'channelId (assoc 'resourceId (assoc 'snippet item)))
+                     (alist-get 'channelId (assoc 'snippet item)))
+
+                   'videoId
+                   (alist-get 'videoId
+                              (if (string= "youtube#searchResult" (alist-get 'kind item))
+                                  (alist-get 'id item)
+                                (alist-get 'resourceId (alist-get 'snippet item))))
+
+                   'help-echo (cdr
+                               (assoc 'description
+                                      (assoc 'snippet item)))))
+                 (insert "\n")))
+              (insert "\n")))))
+    (goto-char (+ 1 (point-min)))
+    (end-of-line 0)
+    (open-line 1)
+    (insert (propertize "Subscriptions\n"
+                        'font-lock-face '(:foreground "sea green" :underline t)))
+    (read-only-mode)
+    (message "Done")))
