@@ -1,22 +1,3 @@
-;; {
-;; "access_token": "ya29.GluVBHKr9Sycw16XFVrxPfVrte1Jb3p5vXpqRj1flod4bpZC2pqxwWFsJ0B7MOJMuK4r5f5h3a53Oj32FsqNBJ_S8OqX9zldd6VJ1wIBZ4MNETKhI4aKBL9Vp9Cf",
-;; "token_type": "Bearer",
-;; "expires_in": 3600,
-;; "refresh_token": "1/R6mS8UIWuh2-rKXKc1HAhdMnvQ8tCQzI4MJyCozuv0M"
-;; }
-
-;; ~ $ curl -i -G -d "channelId=UCgCflAd-1Yf7ffXjEYXbPUQ&part=snippet,contentDetails&key=AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q" https://www.googleapis.com/youtube/v3/subscriptions
-
-;; ~ $ curl -i -d "client_id=457835332683-7k3hgag48hd5rpseahsik6s76cdd71kf.apps.googleusercontent.com&client_secret=dgRS0Qm9Z0Mi24QM1bk6rii4&refresh_token=1/R6mS8UIWuh2-rKXKc1HAhdMnvQ8tCQzI4MJyCozuv0M&grant_type=refresh_token" https://www.googleapis.com/oauth2/v4/token
-
-;; ya29.GlyXBDErqt4KPSA6GYwRJTV98hiUytf_0GyvbB4gf02m9w35aIG2tT8CXLQOACyv6C9aNMThenokMo9VRajnT0wPbR-ETnd4MJ-wLRxo5FoX5ty3ItDe_b995cVv5w
-
-;; ~ $ curl -i -G -d "maxResults=25&channelId=direwolf20&part=snippet,contentDetails&key=AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q" https://www.googleapis.com/youtube/v3/playlists
-
-;; UC_ViSsVg_3JUDyLS3E2Un5g
-
-;; ~/Repos/kadinparker/elisp $ curl -i -G -d "playlistId=PLaiPn4ewcbkHxqv1ao5R-piPIqRDe3kkI&maxResults=25&part=snippet,contentDetails&key=AIzaSyCW0c4fXbykXueatnBnUGE2g9t1zThS_-Q" https://www.googleapis.com/youtube/v3/playlistItems
-
 (defvar youtube-oauth-refresh-token nil)
 (defvar youtube-oauth-access-code nil)
 
